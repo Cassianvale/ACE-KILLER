@@ -38,38 +38,23 @@ jobs:
           cache: 'pip'
           cache-dependency-path: 'requirements.txt'
 
-      - name: 设置MSYS2/MinGW-w64环境
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: false
-          path-type: minimal
-          release: false
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-gcc-libs
-            mingw-w64-x86_64-binutils
-            mingw-w64-x86_64-headers-git
-            mingw-w64-x86_64-crt-git
-            mingw-w64-x86_64-winpthreads-git
-          
-      - name: 配置编译器环境
-        shell: msys2 {0}
+      - name: 配置Nuitka编译器环境
         run: |
-          # 验证GCC安装和版本
-          echo "🔧 验证MSYS2 MinGW-w64环境:"
-          gcc --version
-          g++ --version
-          which gcc
-          which g++
+          Write-Host "🔧 配置Nuitka编译器环境..."
           
-          # 显示编译器详细信息
-          echo "📋 编译器详细信息:"
-          gcc -v 2>&1 | tail -5
+          # 设置环境变量让Nuitka自动下载编译器
+          echo "NUITKA_DOWNLOAD_CONFIRMATION=yes" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           
-          echo "✅ MSYS2 MinGW-w64环境配置完成"
+          # 确保编译器缓存目录存在
+          $cacheDir = "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache"
+          if (-not (Test-Path $cacheDir)) {
+            New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
+          }
+          
+          Write-Host "✅ Nuitka将自动下载并使用兼容的WinLibs GCC"
+        shell: pwsh
 
-      - name: 缓存PySide6和Nuitka
+      - name: 缓存PySide6、Nuitka和编译器
         uses: actions/cache@v4
         id: cache-deps
         with:
@@ -79,11 +64,12 @@ jobs:
             ~/.local/share/Nuitka
             ~/AppData/Local/pip/Cache
             ~/AppData/Local/Nuitka/Nuitka/Cache
-          key: ${{ runner.os }}-pyside6-nuitka-msys2-${{ hashFiles('requirements.txt') }}-v3
+            ~/AppData/Local/Nuitka/Nuitka/Cache/DOWNLOADS
+          key: ${{ runner.os }}-pyside6-nuitka-winlibs-${{ hashFiles('requirements.txt') }}-v4
           restore-keys: |
-            ${{ runner.os }}-pyside6-nuitka-msys2-${{ hashFiles('requirements.txt') }}-
+            ${{ runner.os }}-pyside6-nuitka-winlibs-${{ hashFiles('requirements.txt') }}-
+            ${{ runner.os }}-pyside6-nuitka-winlibs-
             ${{ runner.os }}-pyside6-nuitka-msys2-
-            ${{ runner.os }}-pyside6-nuitka-mingw64-
       - name: 安装Python依赖
         run: |
           Write-Host "📦 安装Python依赖..."
@@ -135,16 +121,8 @@ jobs:
             exit 1
           }
           
-          # 验证编译器可用性
-          Write-Host "🔧 验证编译器环境:"
-          try {
-            $gccPath = (Get-Command gcc -ErrorAction Stop).Source
-            Write-Host "✅ 找到GCC: $gccPath"
-            gcc --version | Select-Object -First 1
-          } catch {
-            Write-Error "❌ 无法找到GCC编译器"
-            exit 1
-          }
+          # Nuitka将自动下载所需的WinLibs GCC编译器
+          Write-Host "🔧 Nuitka将自动管理编译器，无需预先安装"
           
           Write-Host "🚀 开始Nuitka编译..."
           python -m nuitka --standalone `
@@ -172,6 +150,7 @@ jobs:
           PYTHONIOENCODING: utf-8
           PYTHONLEGACYWINDOWSSTDIO: 1
           ACE_KILLER_VERSION: ${{ github.event.inputs.version }}
+          NUITKA_DOWNLOAD_CONFIRMATION: yes
 
       - name: 验证构建结果
         run: |
