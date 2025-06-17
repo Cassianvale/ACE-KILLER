@@ -135,7 +135,13 @@ jobs:
             exit 1
           }
           
-          # Nuitka将自动下载所需的WinLibs GCC编译器
+          # 检查Nuitka缓存状态
+          if ("${{ steps.cache-nuitka.outputs.cache-hit }}" -eq "true") {
+            Write-Host "✅ 发现Nuitka编译器缓存"
+          } else {
+            Write-Host "🔄 未发现编译器缓存，Nuitka将自动下载WinLibs GCC"
+          }
+          
           Write-Host "🔧 Nuitka将自动管理编译器，无需预先安装"
           
           Write-Host "🚀 开始Nuitka编译..."
