@@ -38,41 +38,55 @@ jobs:
           cache: 'pip'
           cache-dependency-path: 'requirements.txt'
 
-      - name: 配置Nuitka编译器环境
+      - name: 准备Nuitka缓存目录
         run: |
-          Write-Host "🔧 配置Nuitka编译器环境..."
-          
-          # 设置环境变量让Nuitka自动下载编译器
-          echo "NUITKA_DOWNLOAD_CONFIRMATION=yes" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "🔧 准备Nuitka编译器缓存..."
           
           # 确保编译器缓存目录存在
           $cacheDir = "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache"
           if (-not (Test-Path $cacheDir)) {
             New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
+            Write-Host "✅ 创建缓存目录: $cacheDir"
+          } else {
+            Write-Host "✅ 缓存目录已存在: $cacheDir"
           }
           
-          Write-Host "✅ Nuitka将自动下载并使用兼容的WinLibs GCC"
+          Write-Host "💡 Nuitka将使用 --assume-yes-for-downloads 参数自动下载WinLibs GCC"
         shell: pwsh
 
-      - name: 缓存PySide6、Nuitka和编译器
+      - name: 缓存Python依赖
         uses: actions/cache@v4
-        id: cache-deps
+        id: cache-pip
         with:
           path: |
-            ~/.cache/pip
-            ~/.cache/Nuitka
-            ~/.local/share/Nuitka
-            ~/AppData/Local/pip/Cache
-            ~/AppData/Local/Nuitka/Nuitka/Cache
-            ~/AppData/Local/Nuitka/Nuitka/Cache/DOWNLOADS
-          key: ${{ runner.os }}-pyside6-nuitka-winlibs-${{ hashFiles('requirements.txt') }}-v4
+            ~\AppData\Local\pip\Cache
+            ~\AppData\Roaming\pip\Cache
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
           restore-keys: |
-            ${{ runner.os }}-pyside6-nuitka-winlibs-${{ hashFiles('requirements.txt') }}-
-            ${{ runner.os }}-pyside6-nuitka-winlibs-
-            ${{ runner.os }}-pyside6-nuitka-msys2-
+            ${{ runner.os }}-pip-
+
+      - name: 缓存Nuitka和编译器
+        uses: actions/cache@v4
+        id: cache-nuitka
+        with:
+          path: |
+            ~\AppData\Local\Nuitka\Nuitka\Cache
+            ~\AppData\Local\Nuitka\Nuitka\Cache\DOWNLOADS
+          key: ${{ runner.os }}-nuitka-compiler-v1
+          restore-keys: |
+            ${{ runner.os }}-nuitka-compiler-
+            ${{ runner.os }}-nuitka-
       - name: 安装Python依赖
         run: |
           Write-Host "📦 安装Python依赖..."
+          
+          # 检查缓存状态
+          if ("${{ steps.cache-pip.outputs.cache-hit }}" -eq "true") {
+            Write-Host "✅ 发现Python依赖缓存，跳过部分安装"
+          } else {
+            Write-Host "🔄 未发现缓存，开始全新安装"
+          }
+          
           python -m pip install --upgrade pip wheel --quiet
           pip install "certifi>=2025.4.26" --quiet
           pip install -r requirements.txt --quiet
@@ -126,6 +140,7 @@ jobs:
           
           Write-Host "🚀 开始Nuitka编译..."
           python -m nuitka --standalone `
+            --assume-yes-for-downloads `
             --windows-console-mode=disable `
             --windows-icon-from-ico=$icon_path `
             --include-data-dir=assets/icon=assets/icon `
@@ -150,7 +165,6 @@ jobs:
           PYTHONIOENCODING: utf-8
           PYTHONLEGACYWINDOWSSTDIO: 1
           ACE_KILLER_VERSION: ${{ github.event.inputs.version }}
-          NUITKA_DOWNLOAD_CONFIRMATION: yes
 
       - name: 验证构建结果
         run: |
